@@ -1,74 +1,64 @@
 import { Context, Schema } from 'koishi'
-import { resolve } from 'path'
 import { } from '@koishijs/plugin-console'
 
 import axios from 'axios'
 
-export const name = 'ffxiv-bot'
+export const name = 'ffxiv-bot-hcn'
 
 export interface Config {
-  Data_Center?: string
-  Server?: string
-  Gst?: boolean
-  Limit?: number
+  DataCenter: { Server: any }
+  Server: string
+  Gst: boolean
+  Limit: number
 }
 export const schema = Schema.intersect([
   Schema.object({
-    Data_Center: Schema.union([
-      'China',
-      'Japan',
-      'North-America',
-      'Europe',
-      'Oceania',
+    DataCenter: Schema.union([
+      Schema.object({
+        Server: Schema.union(['陆行鸟', '莫古力', '猫小胖', '豆豆柴']).description('服区').required(),
+      }).description('China'),
+      Schema.object({
+        Server: Schema.union(['Elemental', 'Gaia', 'Mana', 'Meteor']).description('服区').required(),
+      }).description('Japan'),
+      Schema.object({
+        Server: Schema.union(['Aether', 'Primal', 'Crystal', 'Dynamis']).description('服区').required(),
+      }).description('North-America'),
+      Schema.object({
+        Server: Schema.union(['Chaos', 'Light']).description('服区').required()
+      }).description('Europe'),
+      Schema.object({
+        Server: Schema.string().pattern(/^Materia$/i).default('Materia').description('服区').required(),
+      }).description('Oceania'),
     ]).description('数据中心').required(),
   }).description('服区设置'),
-  Schema.union([
-    Schema.object({
-      Data_Center: Schema.const('China').required(),
-      Server: Schema.union(['点此项切换数据中心(bug)', '陆行鸟', '莫古力', '猫小胖', '豆豆柴']).description('服区').required(),
-    }),
-    Schema.object({
-      Data_Center: Schema.const('Japan').required(),
-      Server: Schema.union(['点此项切换数据中心(bug)', 'Elemental', 'Gaia', 'Mana', 'Meteor']).description('服区').required(),
-    }),
-    Schema.object({
-      Data_Center: Schema.const('North-America').required(),
-      Server: Schema.union(['点此项切换数据中心(bug)', 'Aether', 'Primal', 'Crystal', 'Dynamis']).description('服区').required(),
-    }),
-    Schema.object({
-      Data_Center: Schema.const('Europe').required(),
-      Server: Schema.union(['点此项切换数据中心(bug)', 'Chaos', 'Light']).description('服区').required()
-    }),
-    Schema.object({
-      Data_Center: Schema.const('Oceania').required(),
-      Server: Schema.union(['点此项切换数据中心(bug)', 'Materia']).description('服区').required(),
-    }),
-  ]),
   Schema.object({
     Gst: Schema.boolean().default(false).description('自动计算税后价')
   }).description('查价设置'),
   Schema.object({
     Limit: Schema.number().role('slider').min(3).max(20).step(1).default(5).description('查价结果行数')
-  }).description('消息设置')
+  }).description('消息设置'),
+  Schema.object({
+    User_data: Schema.boolean().default(false).description('用户数据记录'),
+    Item_data: Schema.boolean().default(false).description('物价关注功能')
+  }).description('数据库服务'),
 ])
 
 export function apply(ctx: Context, config: Config) {
   ctx.command('ffxiv_bot <prompts:text>')
     .alias('ffxiv_bot')
     .shortcut('查价', { fuzzy: true })
-    .option('server', '-s <server>', { fallback: config.Server })
+    .option('server', '-s <server>', { fallback: config.DataCenter.Server })
     .option('gst', '-g', { fallback: config.Gst })
     .option('limit', '-l <limit>', { fallback: config.Limit })
     .action(async ({ session, options }, input) => {
       if (!input?.trim()) {
         return session.execute('help ffxiv_bot');
       }
-      const dataCenter = config.Data_Center;
-      var backmessage;
       var itemId: number;
       var itemName: string;
       var itemSearch_url = '';
-      if (dataCenter == 'China') {
+      var reg = new RegExp("[\\u4E00-\\u9FFF]+", "g");
+      if (reg.test(config.DataCenter.Server)) {
         itemSearch_url = "https://cafemaker.wakingsands.com/search?string=" + encodeURI(input) + "&indexes=item&language=chs&filters=ItemSearchCategory.ID%3E=1&columns=ID,Name,LevelItem&limit=500&sort_field=LevelItem&sort_order=desc";
       } else {
         itemSearch_url = "https://xivapi.com/search?string=" + encodeURI(input) + "&indexes=item&language=chs&filters=ItemSearchCategory.ID%3E=1&columns=ID,Name,LevelItem&limit=500&sort_field=LevelItem&sort_order=desc";
@@ -131,7 +121,7 @@ async function getPrices(session, itemName: string, itemId: number, options: any
   var universalis_NQ = 'https://universalis.app/api/v2/' + encodeURI(server) + '/' + itemId + '?listings=' + limit + '&noGst=' + gst + '&hq=nq' + '&fields=lastUploadTime%2Clistings.pricePerUnit%2Clistings.quantity%2Clistings.worldName';
   var universalis_HQ_recvJson;
   var universalis_NQ_recvJson;
-  var backmessage = itemName;
+  var backmessage = itemName + "  -  " + options.server;
   var lastTime: string;
   await axios({
     method: 'GET',

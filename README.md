@@ -1,16 +1,13 @@
 # koishi-plugin-ffxiv-bot-hcn
-基于Koishi的FF14查价机器人 Universalis集成 By.HCN 
 
-正在开发中
+[![npm](https://img.shields.io/npm/v/koishi-plugin-ffxiv-bot-hcn?style=flat-square)](https://www.npmjs.com/package/koishi-plugin-ffxiv-bot-hcn)
 
+FF14查价机器人 Universalis集成 By.HCN
 存在的bug：
+    1.服区设置-数据中心切换需要点击两次。
+        推测；切换DataCenter需要清空DataCenter.Server中的数据，第一次为清空数据，第二次才能正常切换。可能需要等待Schema更新双union嵌套，才能解决此bug
 
-    1.配置项Server不能跟随数据中心切换
-    2.单个消息超过字数上限会出现无法发送的情况
-  
-后续开发：
-
-  1.使用者信息保存功能：用户在第一次使用本插件后需要初始化个人服务器信息（一个群里可能有不同服务器的玩家）可选功能会需要数据库，需要占用一定的磁盘空间
-  
-  gocq用不了啊～哼哼～！啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊！
-
+正在开发中：
+    数据库功能：
+        1.用户可注册服区信息，注册用户优先调用数据库中的服区信息来进行查价
+        2.用户可以设定关注列表，bot间隔一定时间推送物品价格。可自定：权限用户，间隔时间，关注数量
