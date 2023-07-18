@@ -74,7 +74,7 @@ export function apply(ctx: Context, config: Config) {
         if (itemSearch_recvJson.Pagination.ResultsTotal == 0) {
           session.send('未查询到包含\'' + input + '\'的物品,你确定市场上有卖吗？');
         } else if (itemSearch_recvJson.Pagination.ResultsTotal == 1) {
-          session.send(config.DataCenter.Server + "  -  " + itemSearch_recvJson.Results[0].Name + '价格查询中,请稍等');
+          session.send(itemSearch_recvJson.Results[0].Name + " - " + options.server + '价格查询中');
           itemId = itemSearch_recvJson.Results[0].ID;
           itemName = itemSearch_recvJson.Results[0].Name;
           getPrices(session, itemName, itemId, options);
@@ -103,7 +103,7 @@ export function apply(ctx: Context, config: Config) {
             } else if (Number(num) <= 0 || Number(num) > count + 1) {
               session.send('序号就这几个,你再好好想想,我先走了');
             } else {
-              session.send(itemSearch_recvJson.Results[Number(num) - 1].Name + '价格查询中,请稍等');
+              session.send(itemSearch_recvJson.Results[Number(num) - 1].Name + " - " + options.server  + '价格查询中');
               itemId = itemSearch_recvJson.Results[Number(num) - 1].ID
               itemName = itemSearch_recvJson.Results[Number(num) - 1].Name;
               getPrices(session, itemName, itemId, options);
