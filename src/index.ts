@@ -37,19 +37,19 @@ export const schema = Schema.intersect([
   Schema.object({
     Limit: Schema.number().role('slider').min(3).max(20).step(1).default(5).description('查价结果行数')
   }).description('消息设置'),
-  Schema.object({
-    User_data: Schema.boolean().default(false).description('用户数据记录'),
-    Item_data: Schema.boolean().default(false).description('物价关注功能')
-  }).description('数据库服务'),
+  //Schema.object({
+  //  User_data: Schema.boolean().default(false).description('用户数据记录'),
+  //  Item_data: Schema.boolean().default(false).description('物价关注功能')
+  //}).description('数据库服务'),
 ])
 
 export function apply(ctx: Context, config: Config) {
   ctx.command('ffxiv_bot <prompts:text>')
-    .alias('ffxiv_bot')
+    .alias('ffxiv_bot_HCN FF14查价服务')
     .shortcut('查价', { fuzzy: true })
-    .option('server', '-s <server>', { fallback: config.DataCenter.Server })
-    .option('gst', '-g', { fallback: config.Gst })
-    .option('limit', '-l <limit>', { fallback: config.Limit })
+    .option('server', '-s 目标服务器', { fallback: config.DataCenter.Server })
+    .option('gst', '-g 税后价格', { fallback: config.Gst })
+    .option('limit', '-l 结果行数', { fallback: config.Limit })
     .action(async ({ session, options }, input) => {
       if (!input?.trim()) {
         return session.execute('help ffxiv_bot');

@@ -18,9 +18,6 @@ export declare const schema: Schema<Schemastery.ObjectS<{
     Gst: Schema<boolean, boolean>;
 }> | Schemastery.ObjectS<{
     Limit: Schema<number, number>;
-}> | Schemastery.ObjectS<{
-    User_data: Schema<boolean, boolean>;
-    Item_data: Schema<boolean, boolean>;
 }>, {
     DataCenter: Schemastery.ObjectT<{
         Server: Schema<string, string>;
@@ -29,8 +26,5 @@ export declare const schema: Schema<Schemastery.ObjectS<{
     Gst: boolean;
 } & {
     Limit: number;
-} & {
-    User_data: boolean;
-    Item_data: boolean;
 }>;
 export declare function apply(ctx: Context, config: Config): void;
