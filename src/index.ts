@@ -44,8 +44,7 @@ export const schema = Schema.intersect([
 ])
 
 export function apply(ctx: Context, config: Config) {
-  ctx.command('ffxiv_bot <prompts:text>')
-    .alias('ffxiv_bot_HCN FF14查价服务')
+  ctx.command('ffxiv_bot_HCN FF14市场查价服务')
     .shortcut('查价', { fuzzy: true })
     .option('server', '-s 目标服务器', { fallback: config.DataCenter.Server })
     .option('gst', '-g 税后价格', { fallback: config.Gst })
