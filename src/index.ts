@@ -4,6 +4,7 @@ import { } from '@koishijs/plugin-console'
 import axios from 'axios'
 
 export const name = 'ffxiv-bot-hcn'
+export const usage = '指令：查价 <物品名>'
 
 export interface Config {
   DataCenter: { Server: any }
@@ -32,26 +33,22 @@ export const schema = Schema.intersect([
     ]).description('数据中心').required(),
   }).description('服区设置'),
   Schema.object({
-    Gst: Schema.boolean().default(false).description('自动计算税后价')
+    Gst: Schema.boolean().default(true).description('自动计算税后价')
   }).description('查价设置'),
   Schema.object({
     Limit: Schema.number().role('slider').min(3).max(20).step(1).default(5).description('查价结果行数')
   }).description('消息设置'),
-  //Schema.object({
-  //  User_data: Schema.boolean().default(false).description('用户数据记录'),
-  //  Item_data: Schema.boolean().default(false).description('物价关注功能')
-  //}).description('数据库服务'),
 ])
 
 export function apply(ctx: Context, config: Config) {
-  ctx.command('ffxiv_bot_HCN FF14市场查价服务')
+  ctx.command('ffxiv_bot_hcn FF14市场查价服务')
     .shortcut('查价', { fuzzy: true })
     .option('server', '-s 目标服务器', { fallback: config.DataCenter.Server })
     .option('gst', '-g 税后价格', { fallback: config.Gst })
     .option('limit', '-l 结果行数', { fallback: config.Limit })
     .action(async ({ session, options }, input) => {
       if (!input?.trim()) {
-        return session.execute('help ffxiv_bot');
+        return session.execute('help ffxiv_bot_hcn');
       }
       var itemId: number;
       var itemName: string;
