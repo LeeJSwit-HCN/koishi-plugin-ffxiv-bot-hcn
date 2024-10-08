@@ -18,5 +18,4 @@ FF14查价机器人 Universalis集成 By.HCN
     API 上的速率限制为 25 req/s（一般情况下用不了这么高，除非一个机器人一堆群）
 
 
-
-(可能不更新了，报效国防去了)
+bug：未使用koishi推荐的ctx.http() 来执行 HTTP 请求，在安装插件时会显示Error : Cannot find module axios   目前正在积极修复
