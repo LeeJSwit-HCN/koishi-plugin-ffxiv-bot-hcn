@@ -20,7 +20,9 @@ FF14查价机器人 Universalis集成 By.HCN
 
 
 -开发中：
+    
     查询物品交易历史
     
 -bug:
+    
     在请求universalis API时，有时会发生数据包错误的问题，在发送第二次相同查价请求时，则会恢复正常。考虑是universalis API在长时间未发送报文后，会生成客户端更新数据导致的。
