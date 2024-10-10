@@ -1,7 +1,6 @@
 import { Context, Schema } from 'koishi'
 import { } from '@koishijs/plugin-console'
 
-import axios from 'axios'
 
 export const name = 'ffxiv-bot-hcn'
 export const usage = '指令：查价 <物品名>'
@@ -41,14 +40,15 @@ export const schema = Schema.intersect([
 ])
 
 export function apply(ctx: Context, config: Config) {
-  ctx.command('ffxiv_bot_hcn FF14市场查价服务')
-    .shortcut('查价', { fuzzy: true })
-    .option('server', '-s 目标服务器', { fallback: config.DataCenter.Server })
-    .option('gst', '-g 税后价格', { fallback: config.Gst })
-    .option('limit', '-l 结果行数', { fallback: config.Limit })
+  ctx.command('查价')
+    .alias('/查价')
+    .option('server', '-s <server> 目标服务器', { fallback: config.DataCenter.Server })
+    .option('limit', '-l <limit> 结果行数', { fallback: config.Limit })
+    .option('gst', '-g 输出税后价格', { fallback: config.Gst })
+    .example('查价 巨匠药酒 -s 猫小胖 -l 20 -g 解释：查询猫小胖服巨匠药酒20条税后价格数据')
     .action(async ({ session, options }, input) => {
       if (!input?.trim()) {
-        return session.execute('help ffxiv_bot_hcn');
+        return session.execute('help 查价');
       }
       var itemId: number;
       var itemName: string;
@@ -59,13 +59,9 @@ export function apply(ctx: Context, config: Config) {
       } else {
         itemSearch_url = "https://xivapi.com/search?string=" + encodeURI(input) + "&indexes=item&language=chs&filters=ItemSearchCategory.ID%3E=1&columns=ID,Name,LevelItem&limit=500&sort_field=LevelItem&sort_order=desc";
       }
-      var itemSearch_recvJson
-      await axios({
-        method: 'GET',
-        url: itemSearch_url,
-        timeout: 60000
-      }).then((response) => {
-        itemSearch_recvJson = response.data
+      var itemSearch_recvJson: { Pagination: { ResultsTotal: number }; Results: { Name: string, ID: number }[] }
+      await ctx.http.get(itemSearch_url).then((response) => {
+        itemSearch_recvJson = response
       }).then(async () => {
         if (itemSearch_recvJson.Pagination.ResultsTotal == 0) {
           session.send('未查询到包含\'' + input + '\'的物品,你确定市场上有卖吗？');
@@ -73,7 +69,7 @@ export function apply(ctx: Context, config: Config) {
           session.send(itemSearch_recvJson.Results[0].Name + " - " + options.server + '价格查询中');
           itemId = itemSearch_recvJson.Results[0].ID;
           itemName = itemSearch_recvJson.Results[0].Name;
-          getPrices(session, itemName, itemId, options);
+          getPrices(ctx,session, itemName, itemId, options);
         } else {
           var menu = '';
           var resultsTotal = '';
@@ -99,17 +95,18 @@ export function apply(ctx: Context, config: Config) {
             } else if (Number(num) <= 0 || Number(num) > count + 1) {
               session.send('序号就这几个,你再好好想想,我先走了');
             } else {
-              session.send(itemSearch_recvJson.Results[Number(num) - 1].Name + " - " + options.server  + '价格查询中');
+              session.send(itemSearch_recvJson.Results[Number(num) - 1].Name + " - " + options.server + '价格查询中');
               itemId = itemSearch_recvJson.Results[Number(num) - 1].ID
               itemName = itemSearch_recvJson.Results[Number(num) - 1].Name;
-              getPrices(session, itemName, itemId, options);
+              getPrices(ctx,session, itemName, itemId, options);
             }
           }
         }
       })
     })
 }
-async function getPrices(session, itemName: string, itemId: number, options: any) {
+
+async function getPrices(ctx: Context, session, itemName: string, itemId: number, options: any) {
   var server = options.server;
   var gst = options.gst;
   var limit = options.limit;
@@ -119,15 +116,9 @@ async function getPrices(session, itemName: string, itemId: number, options: any
   var universalis_NQ_recvJson;
   var backmessage = itemName + "  -  " + options.server;
   var lastTime: string;
-  await axios({
-    method: 'GET',
-    url: universalis_HQ,
-    timeout: 60000
-  }).then((response) => {
-    universalis_HQ_recvJson = response.data;
-    if (response.status == 200) {
-      lastTime = '\n更新时间:' + new Date(universalis_HQ_recvJson.lastUploadTime).toLocaleString() + '\n';
-    }
+  await ctx.http.get(universalis_HQ).then((response) => {
+    universalis_HQ_recvJson = response;
+    lastTime = '\n更新时间:' + new Date(universalis_HQ_recvJson.lastUploadTime).toLocaleString() + '\n';
   }).catch((error) => {
     if (error.response) {
       switch (error.response.status) {
@@ -141,15 +132,9 @@ async function getPrices(session, itemName: string, itemId: number, options: any
       }
     } else if (error.request) { backmessage = '网络请求失败,请联系管理员'; }
   });
-  await axios({
-    method: 'GET',
-    url: universalis_NQ,
-    timeout: 60000
-  }).then((response) => {
-    universalis_NQ_recvJson = response.data;
-    if (response.status == 200) {
-      lastTime = '\n更新时间:' + new Date(universalis_NQ_recvJson.lastUploadTime).toLocaleString() + '\n';
-    }
+  await ctx.http.get(universalis_NQ).then((response) => {
+    universalis_NQ_recvJson = response;
+    lastTime = '\n更新时间:' + new Date(universalis_NQ_recvJson.lastUploadTime).toLocaleString() + '\n';
   }).catch((error) => {
     if (error.response) {
       switch (error.response.status) {
