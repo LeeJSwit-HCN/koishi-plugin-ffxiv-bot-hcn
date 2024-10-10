@@ -17,3 +17,4 @@ FF14查价机器人 Universalis集成 By.HCN
     本插件查价功能是直接调用Universalis REST API，请注意使用频率。
     API 上的速率限制为 25 req/s（一般情况下用不了这么高，除非一个机器人一堆群）
     
+bug:在请求universalis API时，有时会发生数据包错误的问题，在发送第二次相同查价请求时，则会恢复正常。考虑是universalis API在长时间未发送报文后，会生成客户端更新数据导致的。
