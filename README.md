@@ -25,4 +25,5 @@ FF14查价机器人 Universalis集成 By.HCN
     
 -bug:
     
-    在请求universalis API时，有时会发生数据包错误的问题，在发送第二次相同查价请求时，则会恢复正常。考虑是universalis API在长时间未发送报文后，会生成客户端更新数据导致的。
+    在请求universalis API时，有时会发生数据包错误的问题，在发送第二次相同查价请求时，则会恢复正常。
+    考虑是universalis API在长时间未发送报文后，会生成客户端更新数据导致的。
