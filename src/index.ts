@@ -1,6 +1,7 @@
-import { Context, Schema } from 'koishi'
+import { Context, h, Schema } from 'koishi'
 import { } from '@koishijs/plugin-console'
-
+import { config } from 'process'
+import { log } from 'console'
 
 export const name = 'ffxiv-bot-hcn'
 export const usage = '指令：查价 <物品名>'
@@ -10,6 +11,9 @@ export interface Config {
   Server: string
   Gst: boolean
   Limit: number
+  IsSell: boolean
+  ToBuy: boolean
+  EntriesToReturn: number
 }
 export const schema = Schema.intersect([
   Schema.object({
@@ -32,35 +36,40 @@ export const schema = Schema.intersect([
     ]).description('数据中心').required(),
   }).description('服区设置'),
   Schema.object({
-    Gst: Schema.boolean().default(true).description('自动计算税后价')
+    Limit: Schema.number().role('slider').min(3).max(20).step(1).default(5).description('查价结果行数'),
+    Gst: Schema.boolean().default(true).description('自动计算税后价'),
+    IsSell: Schema.boolean().default(true).description('删除可能已经卖掉的物品价格'),
+    ToBuy: Schema.boolean().default(true).description('生成推荐去哪个服务器买东西')
   }).description('查价设置'),
   Schema.object({
-    Limit: Schema.number().role('slider').min(3).max(20).step(1).default(5).description('查价结果行数')
-  }).description('消息设置'),
+    EntriesToReturn: Schema.number().role('slider').min(5).max(100).step(1).default(12).description('查历史结果行数')
+  }).description('查历史设置'),
 ])
 
 export function apply(ctx: Context, config: Config) {
   ctx.command('查价')
-    .alias('/查价')
+    .alias('/查价').alias('cj')
     .option('server', '-s <server> 目标服务器', { fallback: config.DataCenter.Server })
     .option('limit', '-l <limit> 结果行数', { fallback: config.Limit })
     .option('gst', '-g 输出税后价格', { fallback: config.Gst })
+    .option('isSell', '-i 删除可能已经卖掉的物品', { fallback: config.IsSell })
+    .option('toBuy', '-b 生成推荐去哪个服务器买', { fallback: config.ToBuy })
     .example('查价 巨匠药酒 -s 猫小胖 -l 20 -g 解释：查询猫小胖服巨匠药酒20条税后价格数据')
-    .action(async ({ session, options }, input) => {
+    .action(({ session, options }, input) => {
       if (!input?.trim()) {
         return session.execute('help 查价');
       }
-      var itemId: number;
-      var itemName: string;
-      var itemSearch_url = '';
-      var reg = new RegExp("[\\u4E00-\\u9FFF]+", "g");
+      let itemId: number;
+      let itemName: string;
+      let itemSearch_url: string;
+      let reg = new RegExp("[\\u4E00-\\u9FFF]+", "g");
       if (reg.test(config.DataCenter.Server)) {
         itemSearch_url = "https://cafemaker.wakingsands.com/search?string=" + encodeURI(input) + "&indexes=item&language=chs&filters=ItemSearchCategory.ID%3E=1&columns=ID,Name,LevelItem&limit=500&sort_field=LevelItem&sort_order=desc";
       } else {
         itemSearch_url = "https://xivapi.com/search?string=" + encodeURI(input) + "&indexes=item&language=chs&filters=ItemSearchCategory.ID%3E=1&columns=ID,Name,LevelItem&limit=500&sort_field=LevelItem&sort_order=desc";
       }
-      var itemSearch_recvJson: { Pagination: { ResultsTotal: number }; Results: { Name: string, ID: number }[] }
-      await ctx.http.get(itemSearch_url).then((response) => {
+      let itemSearch_recvJson: { Pagination: { ResultsTotal: number }; Results: { Name: string, ID: number }[] }
+      ctx.http.get(itemSearch_url).then((response) => {
         itemSearch_recvJson = response
       }).then(async () => {
         if (itemSearch_recvJson.Pagination.ResultsTotal == 0) {
@@ -69,15 +78,15 @@ export function apply(ctx: Context, config: Config) {
           session.send(itemSearch_recvJson.Results[0].Name + " - " + options.server + '价格查询中');
           itemId = itemSearch_recvJson.Results[0].ID;
           itemName = itemSearch_recvJson.Results[0].Name;
-          getPrices(ctx,session, itemName, itemId, options);
+          getPrices(ctx, session, itemId, itemName, options);
         } else {
-          var menu = '';
-          var resultsTotal = '';
-          var count = 0;
+          let menu = '';
+          let resultsTotal = '';
+          let count = 0;
           resultsTotal += itemSearch_recvJson.Pagination.ResultsTotal;
           if (Number(resultsTotal) <= 250) {
             menu += '查询到' + itemSearch_recvJson.Pagination.ResultsTotal + '个包含\' ' + input + ' \'的结果,请输入序号\n';
-            for (var i = 0; i < itemSearch_recvJson.Pagination.ResultsTotal; i++) {
+            for (let i = 0; i < itemSearch_recvJson.Pagination.ResultsTotal; i++) {
               if ((i + 1) < 10) { menu += ' '; }
               if ((i + 1) % 2 == 0) { menu += '    '; }
               menu += i + 1;
@@ -87,7 +96,7 @@ export function apply(ctx: Context, config: Config) {
               count++;
             }
             session.send(menu);
-            var num = await session.prompt();
+            let num = await session.prompt();
             if (!num) {
               session.send('不搭理我,我走了');
             } else if (isNaN(Number(num)) || num.indexOf('.') > -1) {
@@ -98,7 +107,71 @@ export function apply(ctx: Context, config: Config) {
               session.send(itemSearch_recvJson.Results[Number(num) - 1].Name + " - " + options.server + '价格查询中');
               itemId = itemSearch_recvJson.Results[Number(num) - 1].ID
               itemName = itemSearch_recvJson.Results[Number(num) - 1].Name;
-              getPrices(ctx,session, itemName, itemId, options);
+              getPrices(ctx, session, itemId, itemName, options);
+            }
+          }
+        }
+      })
+    })
+
+  ctx.command('查历史')
+    .alias('/查历史').alias('cls')
+    .option('server', '-s <server> 目标服务器', { fallback: config.DataCenter.Server })
+    .option('entriesToReturn', '-l <entriesToReturn> 结果行数', { fallback: config.EntriesToReturn })
+    .example('查历史 巨匠药酒 -s 猫小胖 -e 20 -min 100 -max 400 解释：查询猫小胖服巨匠药酒最近20条在100到400金币的交易数据')
+    .action(({ session, options }, input) => {
+      if (!input?.trim()) {
+        return session.execute('help 查历史');
+      }
+      let itemId: number;
+      let itemName: string;
+      let itemSearch_url: string;
+      let reg = new RegExp("[\\u4E00-\\u9FFF]+", "g");
+      if (reg.test(config.DataCenter.Server)) {
+        itemSearch_url = "https://cafemaker.wakingsands.com/search?string=" + encodeURI(input) + "&indexes=item&language=chs&filters=ItemSearchCategory.ID%3E=1&columns=ID,Name,LevelItem&limit=500&sort_field=LevelItem&sort_order=desc";
+      } else {
+        itemSearch_url = "https://xivapi.com/search?string=" + encodeURI(input) + "&indexes=item&language=chs&filters=ItemSearchCategory.ID%3E=1&columns=ID,Name,LevelItem&limit=500&sort_field=LevelItem&sort_order=desc";
+      }
+      let itemSearch_recvJson: { Pagination: { ResultsTotal: number }; Results: { Name: string, ID: number }[] }
+      ctx.http.get(itemSearch_url).then((response) => {
+        itemSearch_recvJson = response
+      }).then(async () => {
+        if (itemSearch_recvJson.Pagination.ResultsTotal == 0) {
+          session.send('未查询到包含\'' + input + '\'的物品,你确定市场上有卖吗？');
+        } else if (itemSearch_recvJson.Pagination.ResultsTotal == 1) {
+          session.send(itemSearch_recvJson.Results[0].Name + " - " + options.server + '交易历史查询中');
+          itemId = itemSearch_recvJson.Results[0].ID;
+          itemName = itemSearch_recvJson.Results[0].Name;
+          getHistory(ctx, session, itemId, itemName, options);
+        } else {
+          let menu = '';
+          let resultsTotal = '';
+          let count = 0;
+          resultsTotal += itemSearch_recvJson.Pagination.ResultsTotal;
+          if (Number(resultsTotal) <= 250) {
+            menu += '查询到' + itemSearch_recvJson.Pagination.ResultsTotal + '个包含\' ' + input + ' \'的结果,请输入序号\n';
+            for (let i = 0; i < itemSearch_recvJson.Pagination.ResultsTotal; i++) {
+              if ((i + 1) < 10) { menu += ' '; }
+              if ((i + 1) % 2 == 0) { menu += '    '; }
+              menu += i + 1;
+              menu += '  ';
+              menu += itemSearch_recvJson.Results[i].Name;
+              if ((i + 1) % 2 == 0) { menu += '\n' }
+              count++;
+            }
+            session.send(menu);
+            let num = await session.prompt();
+            if (!num) {
+              session.send('不搭理我,我走了');
+            } else if (isNaN(Number(num)) || num.indexOf('.') > -1) {
+              session.send('麻烦你输入序号,你再好好想想,我先走了');
+            } else if (Number(num) <= 0 || Number(num) > count + 1) {
+              session.send('序号就这几个,你再好好想想,我先走了');
+            } else {
+              session.send(itemSearch_recvJson.Results[Number(num) - 1].Name + " - " + options.server + '交易历史查询中');
+              itemId = itemSearch_recvJson.Results[Number(num) - 1].ID
+              itemName = itemSearch_recvJson.Results[Number(num) - 1].Name;
+              getHistory(ctx, session, itemId, itemName, options);
             }
           }
         }
@@ -106,19 +179,74 @@ export function apply(ctx: Context, config: Config) {
     })
 }
 
-async function getPrices(ctx: Context, session, itemName: string, itemId: number, options: any) {
-  var server = options.server;
-  var gst = options.gst;
-  var limit = options.limit;
-  var universalis_HQ = 'https://universalis.app/api/v2/' + encodeURI(server) + '/' + itemId + '?listings=' + limit + '&noGst=' + gst + '&hq=1' + '&fields=lastUploadTime%2Clistings.pricePerUnit%2Clistings.quantity%2Clistings.worldName';
-  var universalis_NQ = 'https://universalis.app/api/v2/' + encodeURI(server) + '/' + itemId + '?listings=' + limit + '&noGst=' + gst + '&hq=nq' + '&fields=lastUploadTime%2Clistings.pricePerUnit%2Clistings.quantity%2Clistings.worldName';
-  var universalis_HQ_recvJson;
-  var universalis_NQ_recvJson;
-  var backmessage = itemName + "  -  " + options.server;
-  var lastTime: string;
-  await ctx.http.get(universalis_HQ).then((response) => {
-    universalis_HQ_recvJson = response;
-    lastTime = '\n更新时间:' + new Date(universalis_HQ_recvJson.lastUploadTime).toLocaleString() + '\n';
+async function nameToID(ctx: Context, session, options: any, input: string, config: Config): Promise<{ itemId: number, itemName: string }> {
+  let itemId: number;
+  let itemName: string;
+  let itemSearch_url: string;
+  let reg = new RegExp("[\\u4E00-\\u9FFF]+", "g");
+  if (reg.test(config.DataCenter.Server)) {
+    itemSearch_url = "https://cafemaker.wakingsands.com/search?string=" + encodeURI(input) + "&indexes=item&language=chs&filters=ItemSearchCategory.ID%3E=1&columns=ID,Name,LevelItem&limit=500&sort_field=LevelItem&sort_order=desc";
+  } else {
+    itemSearch_url = "https://xivapi.com/search?string=" + encodeURI(input) + "&indexes=item&language=chs&filters=ItemSearchCategory.ID%3E=1&columns=ID,Name,LevelItem&limit=500&sort_field=LevelItem&sort_order=desc";
+  }
+  let itemSearch_recvJson: { Pagination: { ResultsTotal: number }; Results: { Name: string, ID: number }[] }
+  ctx.http.get(itemSearch_url).then((response) => {
+    itemSearch_recvJson = response
+  }).then(async () => {
+    if (itemSearch_recvJson.Pagination.ResultsTotal == 0) {
+      session.send('未查询到包含\'' + input + '\'的物品,你确定市场上有卖吗？');
+    } else if (itemSearch_recvJson.Pagination.ResultsTotal == 1) {
+      session.send(itemSearch_recvJson.Results[0].Name + " - " + options.server + '价格查询中');
+      itemId = itemSearch_recvJson.Results[0].ID;
+      itemName = itemSearch_recvJson.Results[0].Name;
+    } else {
+      let menu = '';
+      let resultsTotal = '';
+      let count = 0;
+      resultsTotal += itemSearch_recvJson.Pagination.ResultsTotal;
+      if (Number(resultsTotal) <= 250) {
+        menu += '查询到' + itemSearch_recvJson.Pagination.ResultsTotal + '个包含\' ' + input + ' \'的结果,请输入序号\n';
+        for (let i = 0; i < itemSearch_recvJson.Pagination.ResultsTotal; i++) {
+          if ((i + 1) < 10) { menu += ' '; }
+          if ((i + 1) % 2 == 0) { menu += '    '; }
+          menu += i + 1;
+          menu += '  ';
+          menu += itemSearch_recvJson.Results[i].Name;
+          if ((i + 1) % 2 == 0) { menu += '\n' }
+          count++;
+        }
+        session.send(menu);
+        let num = await session.prompt();
+        if (!num) {
+          session.send('不搭理我,我走了');
+        } else if (isNaN(Number(num)) || num.indexOf('.') > -1) {
+          session.send('麻烦你输入序号,你再好好想想,我先走了');
+        } else if (Number(num) <= 0 || Number(num) > count + 1) {
+          session.send('序号就这几个,你再好好想想,我先走了');
+        } else {
+          session.send(itemSearch_recvJson.Results[Number(num) - 1].Name + " - " + options.server + '价格查询中');
+          itemId = itemSearch_recvJson.Results[Number(num) - 1].ID
+          itemName = itemSearch_recvJson.Results[Number(num) - 1].Name;
+        }
+      }
+    }
+  })
+  return new Promise((resolve) => { resolve({ itemId: itemId, itemName: itemName }); })
+}
+
+
+async function getPrices(ctx: Context, session, itemId: number, itemName: string, options: any) {
+  let server = options.server;
+  let gst = options.gst;
+  let limit = options.limit;
+  let entriesToReturn = options.entriesToReturn;
+  let universalis = 'https://universalis.app/api/v2/' + encodeURI(server) + '/' + itemId + '?noGst=' + gst + '&fields=lastUploadTime%2Clistings.pricePerUnit%2Clistings.quantity%2Clistings.worldName%2Clistings.hq';
+  var universalis_recvJson;
+  let backmessage = itemName + "  -  " + options.server + '    市场价格\n';
+  let lastTime: string;
+  await ctx.http.get(universalis).then((response) => {//有时候会出现response没有数据的情况，app TypeError: Cannot read properties of undefined (reading 'listings')
+    universalis_recvJson = response;
+    lastTime = '更新时间:' + new Date(universalis_recvJson.lastUploadTime).toLocaleString() + '\n';
   }).catch((error) => {
     if (error.response) {
       switch (error.response.status) {
@@ -132,40 +260,174 @@ async function getPrices(ctx: Context, session, itemName: string, itemId: number
       }
     } else if (error.request) { backmessage = '网络请求失败,请联系管理员'; }
   });
-  await ctx.http.get(universalis_NQ).then((response) => {
-    universalis_NQ_recvJson = response;
-    lastTime = '\n更新时间:' + new Date(universalis_NQ_recvJson.lastUploadTime).toLocaleString() + '\n';
-  }).catch((error) => {
-    if (error.response) {
-      switch (error.response.status) {
-        case 500: backmessage = 'Universalis服务异常,请稍后再试'; break;
-        case 501: backmessage = 'Universalis服务异常,请稍后再试'; break;
-        case 502: backmessage = 'Universalis服务异常,请稍后再试'; break;
-        case 503: backmessage = 'Universalis服务异常,请稍后再试'; break;
-        case 504: backmessage = 'Universalis服务异常,请稍后再试'; break;
-        case 404: backmessage = 'The world/DC or item requested is invalid. When requesting multiple items at once, an invalid item ID will not trigger this. Instead, the returned list of unresolved item IDs will contain the invalid item ID or IDs.'; break;
-        case 400: backmessage = 'The parameters were invalid.'; break;
+  var itemList: Array<Item> = [], pricesList: Array<Item> = [], hisList: Array<Item> = [];
+  let hqPricesList: Array<Item> = [], nqPricesList: Array<Item> = [];
+  let delCount = 0;
+  if (universalis_recvJson.listings.length != 0) {//删除空值
+    if (options.isSell) {
+      let universalis_His = 'https://universalis.app/api/v2/history/' + encodeURI(server) + '/' + itemId + '?entriesToReturn=' + entriesToReturn;
+      await ctx.http.get(universalis_His).then((response) => {
+        hisList = response.entries;
+      }).catch((error) => {
+        if (error.response) {
+          switch (error.response.status) {
+            case 500: backmessage = 'Universalis服务异常,请稍后再试'; break;
+            case 501: backmessage = 'Universalis服务异常,请稍后再试'; break;
+            case 502: backmessage = 'Universalis服务异常,请稍后再试'; break;
+            case 503: backmessage = 'Universalis服务异常,请稍后再试'; break;
+            case 504: backmessage = 'Universalis服务异常,请稍后再试'; break;
+            case 404: backmessage = 'The world/DC or item requested is invalid. When requesting multiple items at once, an invalid item ID will not trigger this. Instead, the returned list of unresolved item IDs will contain the invalid item ID or IDs.'; break;
+            case 400: backmessage = 'The parameters were invalid.'; break;
+          }
+        } else if (error.request) { backmessage = '网络请求失败,请联系管理员'; }
+      });
+      //判断交易价格是否与默认设置价格相等
+      pricesList = universalis_recvJson.listings;
+      itemList = isSell(pricesList, hisList);
+      delCount = pricesList.length - itemList.length;
+      if (itemList.length != 0) {
+        for (let i = 0; i < itemList.length; i++) {
+          if (universalis_recvJson.listings[i].hq) {
+            hqPricesList[i] = itemList[i];
+          } else {
+            nqPricesList[i] = itemList[i];
+          }
+        }
+      } else {
+        backmessage += '当前结果不准确\n';
+        for (let i = 0; i < universalis_recvJson.listings.length; i++) {
+          if (universalis_recvJson.listings[i].hq) {
+            hqPricesList[i] = universalis_recvJson.listings[i];
+          } else {
+            nqPricesList[i] = universalis_recvJson.listings[i];
+          }
+        }
       }
-    } else if (error.request) { backmessage = '网络请求失败,请联系管理员'; }
-  });
+    } else {
+      for (let i = 0; i < universalis_recvJson.listings.length; i++) {
+        if (universalis_recvJson.listings[i].hq) {
+          hqPricesList[i] = universalis_recvJson.listings[i];
+        } else {
+          nqPricesList[i] = universalis_recvJson.listings[i];
+        }
+      }
+    }
+    if (hqPricesList.length != 0) {
+      console.log(hqPricesList)
+      let showHQ = (hqPricesList.length < limit ? hqPricesList.length : limit) > limit ? (hqPricesList.length < limit ? hqPricesList.length : limit) : limit;
+      backmessage += 'HQ共' + hqPricesList.length + '个结果，显示' + showHQ + '个\n';
+      backmessage += '已排除' + delCount + '个可能被卖掉的结果\n'
+      for (let i = 0; i < showHQ; i++) {
+        backmessage += '      '
+          + hqPricesList[i].pricePerUnit + '×'
+          + hqPricesList[i].quantity + '  '
+          + hqPricesList[i].worldName + '\n'
+      }
+    } else { backmessage += '没有HQ结果\n'; }
+    if (nqPricesList.length != 0) {
+      console.log(nqPricesList)
+      let showNQ = (nqPricesList.length < limit ? nqPricesList.length : limit) > limit ? (nqPricesList.length < limit ? nqPricesList.length : limit) : limit;
+      backmessage += 'NQ共' + nqPricesList.length + '个结果，显示' + showNQ + '个\n';
+      backmessage += '已排除' + delCount + '个可能被卖掉的结果\n'
+      for (let i = 0; i < showNQ; i++) {
+        backmessage += '      '
+          + nqPricesList[i].pricePerUnit + '×'
+          + nqPricesList[i].quantity + '  '
+          + nqPricesList[i].worldName + '\n'
+      }
+    } else { backmessage += '没有NQ结果\n'; }
+  } else { backmessage += '没货\n'; }
+  if (options.toBuy) {
+    backmessage += '可以尝试去-  ' + toBuy(itemList) + '  -购买\n';
+  }
   backmessage += lastTime;
-  if (universalis_HQ_recvJson.listings.length != 0) {
-    backmessage += 'HQ:\n';
-    for (var i = 0; i < universalis_HQ_recvJson.listings.length; i++) {
-      backmessage += '        '
-        + universalis_HQ_recvJson.listings[i].pricePerUnit + '×'
-        + universalis_HQ_recvJson.listings[i].quantity + '  '
-        + universalis_HQ_recvJson.listings[i].worldName + '\n'
-    }
-  } else { backmessage += 'HQ:  没货\n'; }
-  if (universalis_NQ_recvJson.listings.length != 0) {
-    backmessage += 'NQ:\n';
-    for (var i = 0; i < universalis_NQ_recvJson.listings.length; i++) {
-      backmessage += '        '
-        + universalis_NQ_recvJson.listings[i].pricePerUnit + '×'
-        + universalis_NQ_recvJson.listings[i].quantity + '  '
-        + universalis_NQ_recvJson.listings[i].worldName + '\n'
-    }
-  } else { backmessage += 'NQ:  没货\n'; }
   session.send(backmessage);
+}
+
+async function getHistory(ctx: Context, session, itemId: number, itemName: string, options: any) {
+  let server = options.server;
+  let entriesToReturn = options.entriesToReturn;
+  let universalis_His = 'https://universalis.app/api/v2/history/' + encodeURI(server) + '/' + itemId + '?entriesToReturn=' + entriesToReturn;
+  var universalis_His_recvJson;
+  let backmessage = itemName + "-" + options.server + '    交易历史\n';//qq单条消息字数上限3420
+  let lastTime: string;
+  await ctx.http.get(universalis_His).then((response) => {
+    universalis_His_recvJson = response;
+    lastTime = '更新时间:  ' + new Date(universalis_His_recvJson.lastUploadTime).toLocaleString() + '\n';
+  }).catch((error) => {
+    if (error.response) {
+      switch (error.response.status) {
+        case 500: backmessage = 'Universalis服务异常,请稍后再试'; break;
+        case 501: backmessage = 'Universalis服务异常,请稍后再试'; break;
+        case 502: backmessage = 'Universalis服务异常,请稍后再试'; break;
+        case 503: backmessage = 'Universalis服务异常,请稍后再试'; break;
+        case 504: backmessage = 'Universalis服务异常,请稍后再试'; break;
+        case 404: backmessage = 'The world/DC or item requested is invalid. When requesting multiple items at once, an invalid item ID will not trigger this. Instead, the returned list of unresolved item IDs will contain the invalid item ID or IDs.'; break;
+        case 400: backmessage = 'The parameters were invalid.'; break;
+      }
+    } else if (error.request) { backmessage = '网络请求失败,请联系管理员'; }
+  });
+  //判断交易价格是否与默认设置价格相等
+  var hisList: Array<Item> = [];
+  if (universalis_His_recvJson.entries.length != 0) {
+    backmessage += "最近" + universalis_His_recvJson.entries.length + '条交易：\n'
+    for (let i = 0; i < universalis_His_recvJson.entries.length; i++) {
+      hisList[i].worldName = universalis_His_recvJson.entries[i].worldName;
+      hisList[i].pricePerUnit = universalis_His_recvJson.entries[i].pricePerUnit;
+      hisList[i].quantity = universalis_His_recvJson.entries[i].quantity;
+      hisList[i].hq = universalis_His_recvJson.entries[i].hq;
+      backmessage += new Date(universalis_His_recvJson.entries[i].timestamp * 1000).toLocaleString().slice(5, 19) + ' '
+        + universalis_His_recvJson.entries[i].worldName + ' '
+        + universalis_His_recvJson.entries[i].pricePerUnit + '×'
+        + universalis_His_recvJson.entries[i].quantity + '\n'
+    }
+  } else {
+    backmessage += '\n最近没有交易记录';
+    backmessage += lastTime;
+  }
+  backmessage += lastTime;
+  session.send(backmessage);
+}
+//比较服务器 价格 和数量这3个数据就能判断出这个东西是不是已经卖出去了
+
+//添加只查询HQ或NQ的功能 -h -n
+interface Item {
+  worldName: string,
+  pricePerUnit: number,
+  quantity: number
+  hq: boolean
+}
+
+function isSell(pricesList: Array<Item>, hisList: Array<Item>): Array<Item> {
+  if (!Array.isArray(hisList)) {
+    throw new Error("hisList must be an array");
+  }
+  return pricesList.filter(priceItem =>
+    !hisList.some(histItem =>
+      priceItem.worldName === histItem.worldName &&
+      priceItem.pricePerUnit === histItem.pricePerUnit &&
+      priceItem.quantity === histItem.quantity &&
+      priceItem.hq === histItem.hq
+    )
+  );
+}
+
+function toBuy(buyList: Item[]) {
+  const worldNameCount: { [key: string]: number } = {};
+  buyList.forEach(item => {
+    if (worldNameCount[item.worldName]) {
+      worldNameCount[item.worldName]++;
+    } else {
+      worldNameCount[item.worldName] = 1;
+    }
+  });
+  let maxWorldName = '';
+  let maxCount = 0;
+  for (const worldName in worldNameCount) {
+    if (worldNameCount[worldName] > maxCount) {
+      maxCount = worldNameCount[worldName];
+      maxWorldName = worldName;
+    }
+  }
+  return maxWorldName;
 }

@@ -8,6 +8,9 @@ export interface Config {
     Server: string;
     Gst: boolean;
     Limit: number;
+    IsSell: boolean;
+    ToBuy: boolean;
+    EntriesToReturn: number;
 }
 export declare const schema: Schema<Schemastery.ObjectS<{
     DataCenter: Schema<Schemastery.ObjectS<{
@@ -16,16 +19,22 @@ export declare const schema: Schema<Schemastery.ObjectS<{
         Server: Schema<string, string>;
     }>>;
 }> | Schemastery.ObjectS<{
-    Gst: Schema<boolean, boolean>;
-}> | Schemastery.ObjectS<{
     Limit: Schema<number, number>;
+    Gst: Schema<boolean, boolean>;
+    IsSell: Schema<boolean, boolean>;
+    ToBuy: Schema<boolean, boolean>;
+}> | Schemastery.ObjectS<{
+    EntriesToReturn: Schema<number, number>;
 }>, {
     DataCenter: Schemastery.ObjectT<{
         Server: Schema<string, string>;
     }>;
 } & import("cosmokit").Dict & {
-    Gst: boolean;
-} & {
     Limit: number;
+    Gst: boolean;
+    IsSell: boolean;
+    ToBuy: boolean;
+} & {
+    EntriesToReturn: number;
 }>;
 export declare function apply(ctx: Context, config: Config): void;
