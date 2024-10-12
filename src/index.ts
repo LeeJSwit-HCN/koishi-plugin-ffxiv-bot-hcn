@@ -179,67 +179,10 @@ export function apply(ctx: Context, config: Config) {
     })
 }
 
-async function nameToID(ctx: Context, session, options: any, input: string, config: Config): Promise<{ itemId: number, itemName: string }> {
-  let itemId: number;
-  let itemName: string;
-  let itemSearch_url: string;
-  let reg = new RegExp("[\\u4E00-\\u9FFF]+", "g");
-  if (reg.test(config.DataCenter.Server)) {
-    itemSearch_url = "https://cafemaker.wakingsands.com/search?string=" + encodeURI(input) + "&indexes=item&language=chs&filters=ItemSearchCategory.ID%3E=1&columns=ID,Name,LevelItem&limit=500&sort_field=LevelItem&sort_order=desc";
-  } else {
-    itemSearch_url = "https://xivapi.com/search?string=" + encodeURI(input) + "&indexes=item&language=chs&filters=ItemSearchCategory.ID%3E=1&columns=ID,Name,LevelItem&limit=500&sort_field=LevelItem&sort_order=desc";
-  }
-  let itemSearch_recvJson: { Pagination: { ResultsTotal: number }; Results: { Name: string, ID: number }[] }
-  ctx.http.get(itemSearch_url).then((response) => {
-    itemSearch_recvJson = response
-  }).then(async () => {
-    if (itemSearch_recvJson.Pagination.ResultsTotal == 0) {
-      session.send('未查询到包含\'' + input + '\'的物品,你确定市场上有卖吗？');
-    } else if (itemSearch_recvJson.Pagination.ResultsTotal == 1) {
-      session.send(itemSearch_recvJson.Results[0].Name + " - " + options.server + '价格查询中');
-      itemId = itemSearch_recvJson.Results[0].ID;
-      itemName = itemSearch_recvJson.Results[0].Name;
-    } else {
-      let menu = '';
-      let resultsTotal = '';
-      let count = 0;
-      resultsTotal += itemSearch_recvJson.Pagination.ResultsTotal;
-      if (Number(resultsTotal) <= 250) {
-        menu += '查询到' + itemSearch_recvJson.Pagination.ResultsTotal + '个包含\' ' + input + ' \'的结果,请输入序号\n';
-        for (let i = 0; i < itemSearch_recvJson.Pagination.ResultsTotal; i++) {
-          if ((i + 1) < 10) { menu += ' '; }
-          if ((i + 1) % 2 == 0) { menu += '    '; }
-          menu += i + 1;
-          menu += '  ';
-          menu += itemSearch_recvJson.Results[i].Name;
-          if ((i + 1) % 2 == 0) { menu += '\n' }
-          count++;
-        }
-        session.send(menu);
-        let num = await session.prompt();
-        if (!num) {
-          session.send('不搭理我,我走了');
-        } else if (isNaN(Number(num)) || num.indexOf('.') > -1) {
-          session.send('麻烦你输入序号,你再好好想想,我先走了');
-        } else if (Number(num) <= 0 || Number(num) > count + 1) {
-          session.send('序号就这几个,你再好好想想,我先走了');
-        } else {
-          session.send(itemSearch_recvJson.Results[Number(num) - 1].Name + " - " + options.server + '价格查询中');
-          itemId = itemSearch_recvJson.Results[Number(num) - 1].ID
-          itemName = itemSearch_recvJson.Results[Number(num) - 1].Name;
-        }
-      }
-    }
-  })
-  return new Promise((resolve) => { resolve({ itemId: itemId, itemName: itemName }); })
-}
-
-
 async function getPrices(ctx: Context, session, itemId: number, itemName: string, options: any) {
   let server = options.server;
   let gst = options.gst;
   let limit = options.limit;
-  let entriesToReturn = options.entriesToReturn;
   let universalis = 'https://universalis.app/api/v2/' + encodeURI(server) + '/' + itemId + '?noGst=' + gst + '&fields=lastUploadTime%2Clistings.pricePerUnit%2Clistings.quantity%2Clistings.worldName%2Clistings.hq';
   var universalis_recvJson;
   let backmessage = itemName + "  -  " + options.server + '    市场价格\n';
@@ -263,9 +206,10 @@ async function getPrices(ctx: Context, session, itemId: number, itemName: string
   var itemList: Array<Item> = [], pricesList: Array<Item> = [], hisList: Array<Item> = [];
   let hqPricesList: Array<Item> = [], nqPricesList: Array<Item> = [];
   let delCount = 0;
-  if (universalis_recvJson.listings.length != 0) {//删除空值
+  //console.log(universalis_recvJson)//响应为空,可能是网络不好
+  if (universalis_recvJson.listings.length != 0) {
     if (options.isSell) {
-      let universalis_His = 'https://universalis.app/api/v2/history/' + encodeURI(server) + '/' + itemId + '?entriesToReturn=' + entriesToReturn;
+      let universalis_His = 'https://universalis.app/api/v2/history/' + encodeURI(server) + '/' + itemId + '?entriesWithin=18000';
       await ctx.http.get(universalis_His).then((response) => {
         hisList = response.entries;
       }).catch((error) => {
@@ -281,16 +225,16 @@ async function getPrices(ctx: Context, session, itemId: number, itemName: string
           }
         } else if (error.request) { backmessage = '网络请求失败,请联系管理员'; }
       });
-      //判断交易价格是否与默认设置价格相等
       pricesList = universalis_recvJson.listings;
       itemList = isSell(pricesList, hisList);
+      itemList = itemList.filter(obj => { return Object.values(obj).every(value => value !== null && value !== undefined && value !== ""); });
       delCount = pricesList.length - itemList.length;
       if (itemList.length != 0) {
         for (let i = 0; i < itemList.length; i++) {
-          if (universalis_recvJson.listings[i].hq) {
-            hqPricesList[i] = itemList[i];
+          if (itemList[i].hq) {
+            hqPricesList.push(itemList[i]) ;
           } else {
-            nqPricesList[i] = itemList[i];
+            nqPricesList.push(itemList[i]);
           }
         }
       } else {
@@ -312,11 +256,10 @@ async function getPrices(ctx: Context, session, itemId: number, itemName: string
         }
       }
     }
+    backmessage += pricesList.length + '个结果 排除' + delCount + '个卖掉的结果\n'
     if (hqPricesList.length != 0) {
-      console.log(hqPricesList)
       let showHQ = (hqPricesList.length < limit ? hqPricesList.length : limit) > limit ? (hqPricesList.length < limit ? hqPricesList.length : limit) : limit;
       backmessage += 'HQ共' + hqPricesList.length + '个结果，显示' + showHQ + '个\n';
-      backmessage += '已排除' + delCount + '个可能被卖掉的结果\n'
       for (let i = 0; i < showHQ; i++) {
         backmessage += '      '
           + hqPricesList[i].pricePerUnit + '×'
@@ -325,10 +268,8 @@ async function getPrices(ctx: Context, session, itemId: number, itemName: string
       }
     } else { backmessage += '没有HQ结果\n'; }
     if (nqPricesList.length != 0) {
-      console.log(nqPricesList)
       let showNQ = (nqPricesList.length < limit ? nqPricesList.length : limit) > limit ? (nqPricesList.length < limit ? nqPricesList.length : limit) : limit;
       backmessage += 'NQ共' + nqPricesList.length + '个结果，显示' + showNQ + '个\n';
-      backmessage += '已排除' + delCount + '个可能被卖掉的结果\n'
       for (let i = 0; i < showNQ; i++) {
         backmessage += '      '
           + nqPricesList[i].pricePerUnit + '×'
@@ -337,9 +278,7 @@ async function getPrices(ctx: Context, session, itemId: number, itemName: string
       }
     } else { backmessage += '没有NQ结果\n'; }
   } else { backmessage += '没货\n'; }
-  if (options.toBuy) {
-    backmessage += '可以尝试去-  ' + toBuy(itemList) + '  -购买\n';
-  }
+  //if (options.toBuy) {backmessage += '可以尝试去-  ' + toBuy(itemList) + '  -购买\n';}
   backmessage += lastTime;
   session.send(backmessage);
 }
@@ -388,9 +327,7 @@ async function getHistory(ctx: Context, session, itemId: number, itemName: strin
   backmessage += lastTime;
   session.send(backmessage);
 }
-//比较服务器 价格 和数量这3个数据就能判断出这个东西是不是已经卖出去了
 
-//添加只查询HQ或NQ的功能 -h -n
 interface Item {
   worldName: string,
   pricePerUnit: number,
@@ -399,9 +336,6 @@ interface Item {
 }
 
 function isSell(pricesList: Array<Item>, hisList: Array<Item>): Array<Item> {
-  if (!Array.isArray(hisList)) {
-    throw new Error("hisList must be an array");
-  }
   return pricesList.filter(priceItem =>
     !hisList.some(histItem =>
       priceItem.worldName === histItem.worldName &&
@@ -412,7 +346,7 @@ function isSell(pricesList: Array<Item>, hisList: Array<Item>): Array<Item> {
   );
 }
 
-function toBuy(buyList: Item[]) {
+function toBuy(buyList: Item[]) {//只考虑了数量，没有考虑低价，
   const worldNameCount: { [key: string]: number } = {};
   buyList.forEach(item => {
     if (worldNameCount[item.worldName]) {
@@ -431,3 +365,4 @@ function toBuy(buyList: Item[]) {
   }
   return maxWorldName;
 }
+//添加只查询HQ或NQ的功能 -h -n
