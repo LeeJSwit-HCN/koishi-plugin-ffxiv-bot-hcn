@@ -206,50 +206,31 @@ async function getPrices(ctx: Context, session, itemId: number, itemName: string
   if (universalis_recvJson != null && universalis_recvJson != undefined) {
     if (universalis_recvJson.listings.length != 0) {
       lastTime = '更新时间:' + new Date(universalis_recvJson.listings[0].lastReviewTime * 1000).toLocaleString() + '\n';
-      if (options.isSell) {
-        let universalis_His = 'https://universalis.app/api/v2/history/' + encodeURI(server) + '/' + itemId;
-        await ctx.http.get(universalis_His).then((response) => {
-          hisList = response.entries;
-        }).catch((error) => {
-          if (error.response) {
-            switch (error.response.status) {
-              case 500: backmessage = 'Universalis服务异常,请稍后再试'; break;
-              case 501: backmessage = 'Universalis服务异常,请稍后再试'; break;
-              case 502: backmessage = 'Universalis服务异常,请稍后再试'; break;
-              case 503: backmessage = 'Universalis服务异常,请稍后再试'; break;
-              case 504: backmessage = 'Universalis服务异常,请稍后再试'; break;
-              case 404: backmessage = 'The world/DC or item requested is invalid. When requesting multiple items at once, an invalid item ID will not trigger this. Instead, the returned list of unresolved item IDs will contain the invalid item ID or IDs.'; break;
-              case 400: backmessage = 'The parameters were invalid.'; break;
-            }
-          } else if (error.request) { backmessage = '网络请求失败,请联系管理员'; }
-        });
-        pricesList = universalis_recvJson.listings;
-        itemList = isSell(pricesList, hisList);
-        delCount = pricesList.length - itemList.length;
-        if (itemList.length != 0) {
-          for (let i = 0; i < itemList.length; i++) {
-            if (itemList[i].hq && itemList[i] != null && itemList != undefined) {
-              hqPricesList.push(itemList[i]);
-            } else {
-              nqPricesList.push(itemList[i]);
-            }
+      let universalis_His = 'https://universalis.app/api/v2/history/' + encodeURI(server) + '/' + itemId;
+      await ctx.http.get(universalis_His).then((response) => {
+        hisList = response.entries;
+      }).catch((error) => {
+        if (error.response) {
+          switch (error.response.status) {
+            case 500: backmessage = 'Universalis服务异常,请稍后再试'; break;
+            case 501: backmessage = 'Universalis服务异常,请稍后再试'; break;
+            case 502: backmessage = 'Universalis服务异常,请稍后再试'; break;
+            case 503: backmessage = 'Universalis服务异常,请稍后再试'; break;
+            case 504: backmessage = 'Universalis服务异常,请稍后再试'; break;
+            case 404: backmessage = 'The world/DC or item requested is invalid. When requesting multiple items at once, an invalid item ID will not trigger this. Instead, the returned list of unresolved item IDs will contain the invalid item ID or IDs.'; break;
+            case 400: backmessage = 'The parameters were invalid.'; break;
           }
-        } else {
-          backmessage += '当前结果不准确\n';
-          for (let i = 0; i < itemList.length; i++) {
-            if (itemList[i].hq) {
-              hqPricesList[i] = itemList[i];
-            } else {
-              nqPricesList[i] = itemList[i];
-            }
-          }
-        }
-      } else {
-        for (let i = 0; i < universalis_recvJson.listings.length; i++) {
-          if (universalis_recvJson.listings[i].hq) {
-            hqPricesList[i] = universalis_recvJson.listings[i];
+        } else if (error.request) { backmessage = '网络请求失败,请联系管理员'; }
+      });
+      pricesList = universalis_recvJson.listings;
+      itemList = isSell(pricesList, hisList);
+      delCount = pricesList.length - itemList.length;
+      if (itemList.length != 0) {
+        for (let i = 0; i < itemList.length; i++) {
+          if (itemList[i].hq && itemList[i] != null && itemList != undefined) {
+            hqPricesList.push(itemList[i]);
           } else {
-            nqPricesList[i] = universalis_recvJson.listings[i];
+            nqPricesList.push(itemList[i]);
           }
         }
       }
@@ -258,6 +239,9 @@ async function getPrices(ctx: Context, session, itemId: number, itemName: string
         let showHQ = hqPricesList.length < limit ? hqPricesList.length : limit;
         backmessage += 'HQ共' + hqPricesList.length + '个结果，显示' + showHQ + '个\n';
         for (let i = 0; i < showHQ; i++) {
+          if (hqPricesList[i].worldName == undefined) {
+            hqPricesList[i].worldName = options.server
+          }
           backmessage += '      '
             + hqPricesList[i].pricePerUnit + '×'
             + hqPricesList[i].quantity + '  '
@@ -268,6 +252,9 @@ async function getPrices(ctx: Context, session, itemId: number, itemName: string
         let showNQ = nqPricesList.length < limit ? nqPricesList.length : limit;
         backmessage += 'NQ共' + nqPricesList.length + '个结果，显示' + showNQ + '个\n';
         for (let i = 0; i < showNQ; i++) {
+          if (nqPricesList[i].worldName == undefined) {
+            nqPricesList[i].worldName = options.server
+          }
           backmessage += '      '
             + nqPricesList[i].pricePerUnit + '×'
             + nqPricesList[i].quantity + '  '
@@ -280,7 +267,7 @@ async function getPrices(ctx: Context, session, itemId: number, itemName: string
     session.send(backmessage);
   } else {
     session.send('universalis服务网络不佳，正在重新尝试');
-    session.execute('查价 ' + input);
+    session.execute('查价 ' + input + '-s' + options.server + '-l' + options.limit);
   }
 }
 
