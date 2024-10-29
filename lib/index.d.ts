@@ -8,8 +8,9 @@ export interface Config {
     Server: string;
     Gst: boolean;
     Limit: number;
-    BuyCount: number;
+    BuyCount: bigint;
     HQ: boolean;
+    onlyHq: boolean;
     EntriesToReturn: number;
 }
 export declare const schema: Schema<Schemastery.ObjectS<{
@@ -20,6 +21,7 @@ export declare const schema: Schema<Schemastery.ObjectS<{
     }>>;
 }> | Schemastery.ObjectS<{
     Limit: Schema<number, number>;
+    HQ: Schema<boolean, boolean>;
     Gst: Schema<boolean, boolean>;
 }> | Schemastery.ObjectS<{
     EntriesToReturn: Schema<number, number>;
@@ -29,6 +31,7 @@ export declare const schema: Schema<Schemastery.ObjectS<{
     }>;
 } & import("cosmokit").Dict & {
     Limit: number;
+    HQ: boolean;
     Gst: boolean;
 } & {
     EntriesToReturn: number;
